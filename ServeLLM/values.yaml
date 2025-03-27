@@ -1,0 +1,11 @@
+tolerations:
+  - key: sku
+    operator: Exists
+    effect: NoSchedule
+  - key: CriticalAddonsOnly
+    operator: Exists
+    effect: NoSchedule
+  - key: kubernetes.azure.com/scalesetpriority
+    operator: Equal
+    value: "spot"
+    effect: NoSchedule

@@ -1,0 +1,9 @@
+model_type: llm
+engine_config:
+  model_id: meta-llama/Llama-2-7b-chat-hf
+  hf_model_config:
+    temperature: 0.1
+    max_length: 4096
+    quantization: bitsandbytes-4bit
+runtime_env:
+  working_dir: "."

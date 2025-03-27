@@ -1,0 +1,65 @@
+apiVersion: v1
+data:
+  serve_llama2.py: "import os\nfrom typing import List, Optional\n\nfrom fastapi import
+    FastAPI, HTTPException\nfrom fastapi.responses import PlainTextResponse\nfrom
+    pydantic import BaseModel, Field\nfrom vllm import LLM, SamplingParams\n\nimport
+    ray\nfrom ray import serve\n\n# Initialize FastAPI app\napp = FastAPI(title=\"Llama2-7b
+    API\", description=\"API for generating text with Llama2-7b\")\n\n# Define request
+    and response models\nclass GenerationRequest(BaseModel):\n    prompt: str = Field(...,
+    description=\"The input prompt for text generation\")\n    max_tokens: int = Field(512,
+    description=\"Maximum number of tokens to generate\")\n    temperature: float
+    = Field(0.7, description=\"Temperature for sampling\")\n    top_p: float = Field(0.95,
+    description=\"Top-p sampling parameter\")\n    top_k: int = Field(50, description=\"Top-k
+    sampling parameter\")\n    stop_sequences: Optional[List[str]] = Field(None, description=\"Sequences
+    that stop generation\")\n    \nclass GenerationResponse(BaseModel):\n    generated_text:
+    str\n\n# Create a Ray Serve deployment\n@serve.deployment(\n    name=\"llama2-7b-service\",\n
+    \   num_replicas=1,\n    ray_actor_options={\"num_cpus\": 2, \"resources\": {\"accelerator_type_cpu\":
+    1}}\n)\nclass LlamaTextGenerator:\n    def __init__(self):\n        # Initialize
+    the model\n        self.model_id = \"meta-llama/Llama-2-7b-hf\"\n        self.llm
+    = None\n        self.app = FastAPI(title=\"Llama2-7b API\", description=\"API
+    for generating text with Llama2-7b\")\n        self._setup_routes()\n        print(f\"Initializing
+    LlamaTextGenerator with model {self.model_id}\")\n        \n        # Get HuggingFace
+    token from environment\n        self.hf_token = os.environ.get(\"HUGGING_FACE_HUB_TOKEN\")\n
+    \       if not self.hf_token:\n            print(\"WARNING: HUGGING_FACE_HUB_TOKEN
+    environment variable is not set\")\n            \n        # Load the model\n        print(f\"Loading
+    model {self.model_id}...\")\n        try:\n            self.llm = LLM(\n                model=self.model_id,\n
+    \               trust_remote_code=True,\n                download_dir=None, \n
+    \               token=self.hf_token,\n                dtype=\"float16\",  # Use
+    half precision for efficiency\n                gpu_memory_utilization=0.85,\n
+    \           )\n            print(\"Model loaded successfully\")\n        except
+    Exception as e:\n            print(f\"Error loading model: {str(e)}\")\n            #
+    We don't raise here - will return 503 on requests until model loads\n\n    def
+    _setup_routes(self):\n        @self.app.post(\"/generate\", response_model=GenerationResponse)\n
+    \       async def generate_text(request: GenerationRequest):\n            \"\"\"Generate
+    text based on the input prompt\"\"\"\n            if self.llm is None:\n                raise
+    HTTPException(status_code=503, detail=\"Model not loaded yet\")\n                \n
+    \           try:\n                # Configure sampling parameters\n                sampling_params
+    = SamplingParams(\n                    max_tokens=request.max_tokens,\n                    temperature=request.temperature,\n
+    \                   top_p=request.top_p,\n                    top_k=request.top_k,\n
+    \                   stop=request.stop_sequences,\n                )\n                \n
+    \               # Generate text\n                outputs = self.llm.generate([request.prompt],
+    sampling_params)\n                generated_text = outputs[0].outputs[0].text\n
+    \               \n                return GenerationResponse(generated_text=generated_text)\n
+    \           \n            except Exception as e:\n                raise HTTPException(status_code=500,
+    detail=f\"Generation failed: {str(e)}\")\n\n        @self.app.get(\"/health\")\n
+    \       async def health_check():\n            \"\"\"Health check endpoint\"\"\"\n
+    \           return {\"status\": \"ok\", \"model_loaded\": self.llm is not None}\n\n
+    \       @self.app.get(\"/-/healthz\", response_class=PlainTextResponse)\n        async
+    def kubernetes_health_check():\n            \"\"\"Standard health check endpoint
+    for Kubernetes\"\"\"\n            print(\"Health check endpoint hit\")\n            return
+    \"success\"\n\n    async def __call__(self, request):\n        \"\"\"Handle FastAPI
+    requests\"\"\"\n        return await self.app(request)\n\n# Create a deployment
+    graph to expose to Ray Serve\ndeployment_graph = LlamaTextGenerator.bind()\n\n#
+    For direct testing without ray serve\nif __name__ == \"__main__\":\n    import
+    uvicorn\n    app = FastAPI()\n    \n    @app.get(\"/\")\n    def redirect_to_docs():\n
+    \       from fastapi.responses import RedirectResponse\n        return RedirectResponse(url=\"/docs\")\n
+    \   \n    # Start the model in a separate thread\n    import threading\n    generator
+    = LlamaTextGenerator()\n    \n    # Mount the FastAPI app at the root\n    app.mount(\"/\",
+    generator.app)\n    \n    uvicorn.run(app, host=\"0.0.0.0\", port=8000)"
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2025-03-20T07:50:14Z"
+  name: serve-llama2-script
+  namespace: default
+  resourceVersion: "366876"
+  uid: 8d463bcd-32cc-428e-be15-b063da4d547a
