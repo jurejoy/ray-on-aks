@@ -36,7 +36,7 @@ spec:
         spec:
           containers:
           - name: ray-head
-            image: anyscale/ray-llm:2.44.0-py311-cu124
+            image: openaiapp.azurecr.io/my-ray-llm
             env:
             - name: HUGGING_FACE_HUB_TOKEN
               valueFrom:
@@ -94,7 +94,7 @@ spec:
         spec:
           initContainers:
           - name: install-packages
-            image: anyscale/ray-llm:2.44.0-py311-cu124
+            image: openaiapp.azurecr.io/my-ray-llm
             command: ["/bin/bash", "-c"]
             args:
             - |

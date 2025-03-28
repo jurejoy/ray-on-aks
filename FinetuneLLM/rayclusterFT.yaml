@@ -92,16 +92,6 @@ spec:
       # pod template
       template:
         spec:
-          initContainers:
-          - name: install-packages
-            image: anyscale/ray-llm:2.44.0-py311-cu124
-            command: ["/bin/bash", "-c"]
-            args:
-            - |
-              pip install accelerate transformers deepspeed datasets tensorboard huggingface_hub peft
-            volumeMounts:
-            - name: azure-premium-share
-              mountPath: /shared
           containers:
           - name: llm
             image: openaiapp.azurecr.io/my-ray-llm
