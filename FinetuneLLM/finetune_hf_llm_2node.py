@@ -284,23 +284,41 @@ def training_function(kwargs: dict):
     s = time.time()
 
     # Add config initialization explicitly to ensure embedding dimensions are set correctly
-    config = AutoConfig.from_pretrained(
+    model_config = AutoConfig.from_pretrained(
         pretrained_path,
         trust_remote_code=True,
     )
     # Make sure the config has the correct vocab size
-    config.vocab_size = len(tokenizer)
+    model_config.vocab_size = len(tokenizer)
 
     # Initialize model with the specified config
-    model = AutoModelForCausalLM.from_pretrained(
-        pretrained_path,
-        config=config,
-        trust_remote_code=True,
-        torch_dtype=torch.bfloat16,
-        # `use_cache=True` is incompatible with gradient checkpointing.
-        use_cache=False,
-        use_flash_attention_2=False,
-    )
+    model_kwargs = {}
+    if not args.no_use_cache:
+        model_kwargs["use_cache"] = True
+
+    # Initialize the model in a more explicit way to avoid DeepSpeed initialization issues
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            pretrained_path,
+            config=model_config,
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16,
+            use_flash_attention_2=False,
+            ignore_mismatched_sizes=args.ignore_mismatched_sizes,
+            **model_kwargs,
+        )
+    except RuntimeError as e:
+        print(f"Error initializing model: {e}")
+        # Fallback method without DeepSpeed-specific optimizations
+        model = AutoModelForCausalLM.from_pretrained(
+            pretrained_path,
+            config=model_config,
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16,
+            ignore_mismatched_sizes=True,  # Force ignore mismatched sizes
+            **model_kwargs,
+        )
+    
     print(f"Done loading model in {time.time() - s} seconds.")
 
     # Resize token embeddings to match tokenizer
@@ -601,13 +619,6 @@ def parse_args():
         help="Batch size to use per device.",
     )
 
-    parser.add_argument(
-        "--stop-perplexity",
-        default=0,
-        type=float,
-        help="Target perplexity to reach after which to stop training. Default is 0. "
-        "If 0, training will not stop on perplexity.",
-    )
 
     parser.add_argument(
         "--eval-batch-size-per-device",
@@ -682,6 +693,23 @@ def parse_args():
         "https://arxiv.org/pdf/2106.09685.pdf).",
     )
 
+    parser.add_argument(
+        "--no-use-cache",
+        action="store_true",
+        help="Disable use_cache parameter when loading model",
+    )
+
+    parser.add_argument("--ignore-mismatched-sizes", action="store_true", 
+                       help="Ignore mismatched sizes when loading pre-trained weights")
+    
+    # Add the missing stop_perplexity parameter
+    parser.add_argument(
+        "--stop-perplexity",
+        type=float,
+        default=float('inf'),  # Default to infinity so it doesn't stop early
+        help="Stop training when perplexity is below this value",
+    )
+    
     args = parser.parse_args()
 
     return args

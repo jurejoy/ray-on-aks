@@ -25,7 +25,7 @@ fine_tune() {
     local token_path=$8
     local params=("${@:9}")
     echo "Fine-tuning model..."
-    if ! python finetune_hf_llm.py \
+    if ! python finetune_hf_llm_2node.py \
         -bs "${bs}" \
         -nd "${nd}" \
         --model_name "${model_name}" \
@@ -35,7 +35,9 @@ fine_tune() {
         --test_path "${test_path}"  \
         --special_token_path "${token_path}" \
         --num-checkpoints-to-keep 1 \
-        --num-epochs 3 \
+        --num-epochs 1 \
+        --no-use-cache \
+        --ignore-mismatched-sizes \
         "${params[@]}"; then
         echo "Failed to fine-tune the model. Exiting..."
         exit 1
@@ -51,6 +53,7 @@ TOKEN_PATH="${DATA_DIR}/tokens.json"
 
 # Parse arguments
 SIZE=""
+params=()
 for arg in "$@"
 do
     key=${arg%%=*}
